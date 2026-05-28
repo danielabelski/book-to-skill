@@ -1,7 +1,7 @@
 <h1 align="center">📚 book-to-skill</h1>
 
 <p align="center">
-  <strong>Turn any technical book or document into a Claude Code skill — ready to study, reference, and use while you work.</strong>
+  <strong>Turn any technical book, document folder, or collection of sources into a unified Claude Code skill — ready to study, reference, and use while you work.</strong>
 </p>
 
 <p align="center">
@@ -40,7 +40,7 @@ Once installed, you just type `/your-book-slug replication` and Claude reads the
 
 ## 📦 What it generates
 
-Running `/book-to-skill your-book.pdf` (or `.epub`) creates a full skill at `~/.claude/skills/<slug>/`:
+Running `/book-to-skill your-book.pdf` (or a folder, glob, or list of files) creates a full skill at `~/.claude/skills/<slug>/`:
 
 | File | Purpose | Size |
 |------|---------|------|
@@ -57,7 +57,7 @@ Running `/book-to-skill your-book.pdf` (or `.epub`) creates a full skill at `~/.
 ## 🚀 Usage
 
 ```
-/book-to-skill <path-to-document> [skill-name-slug]
+/book-to-skill <path-to-document-folder-or-glob>... [skill-name-slug]
 ```
 
 Supported document formats: PDF, EPUB, DOCX, TXT, Markdown, reStructuredText, AsciiDoc, HTML, RTF, MOBI/AZW/AZW3.
@@ -65,14 +65,17 @@ Supported document formats: PDF, EPUB, DOCX, TXT, Markdown, reStructuredText, As
 **Examples:**
 
 ```bash
-# PDF — derive skill name from filename
-/book-to-skill ~/Downloads/designing-data-intensive-applications.pdf
+# Process several files together into a unified skill
+/book-to-skill ~/papers/paper1.pdf ~/notes/export.txt unified-research
 
-# EPUB — specify a custom slug
-/book-to-skill ~/books/clean-code.epub clean-code
+# Process all supported files in a folder together
+/book-to-skill ~/workspace/project-docs/ project-knowledge
 
-# Full path with explicit name
-/book-to-skill /tmp/ddd-evans.pdf domain-driven-design
+# Process files matching a glob pattern
+/book-to-skill "~/books/*.epub" my-library
+
+# Update/fold new material into an existing skill folder
+/book-to-skill ~/articles/new-paper.pdf ~/.claude/skills/project-knowledge
 ```
 
 After the skill is created, use it like any other Claude Code skill:
@@ -208,9 +211,9 @@ It also shines for books Claude doesn't know at all: niche technical references,
 
 **"NotebookLM handles multiple books better."**
 
-Absolutely true — if your workflow is "I have 80 books and I want to search across all of them," NotebookLM is the right tool.
+Absolutely true — if your workflow is "I have 80 separate books and I want to search across all of them," NotebookLM is the right tool.
 
-book-to-skill is built for a different job: you want to go deep on one book and have its frameworks embedded in your coding or writing workflow, not in a separate browser tab. It's less "library search" and more "the author is sitting next to you while you work."
+book-to-skill is built for a different job: you want to go deep on a specific topic or library, having multiple related documents (papers, chapters, notes) folded into a single unified skill, and even updating it over time as new material arrives! This integrates your customized knowledge base right into your coding or writing workflow, rather than in a separate browser tab.
 
 ---
 
@@ -222,16 +225,10 @@ Copy this into your Claude Code session:
 Install book-to-skill: https://raw.githubusercontent.com/virgiliojr94/book-to-skill/master/SKILL.md
 ```
 
-Or manually:
+Or manually using standard `git clone` (ensures modular engine files are fetched correctly):
 
 ```bash
-mkdir -p ~/.claude/skills/book-to-skill/scripts
-
-curl -o ~/.claude/skills/book-to-skill/SKILL.md \
-  https://raw.githubusercontent.com/virgiliojr94/book-to-skill/master/SKILL.md
-
-curl -o ~/.claude/skills/book-to-skill/scripts/extract.py \
-  https://raw.githubusercontent.com/virgiliojr94/book-to-skill/master/scripts/extract.py
+git clone https://github.com/virgiliojr94/book-to-skill.git ~/.claude/skills/book-to-skill
 ```
 
 Then in any Claude Code session:
@@ -250,7 +247,13 @@ Then in any Claude Code session:
 book-to-skill/
 ├── SKILL.md              # Skill definition + step-by-step instructions
 ├── scripts/
-│   └── extract.py        # PDF + EPUB extraction (pdftotext / PyPDF2 / pdfminer / ebooklib / zipfile)
+│   ├── extract.py        # Thin entrypoint wrapper
+│   └── extractor/        # Modular extraction package
+│       ├── __init__.py
+│       ├── config.py
+│       ├── dependencies.py
+│       ├── utils.py
+│       └── parsers/      # Format-specific parser components (pdf, epub, docx, etc.)
 └── README.md             # This file
 ```
 
