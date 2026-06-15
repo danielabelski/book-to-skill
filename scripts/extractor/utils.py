@@ -85,6 +85,70 @@ _CN_NUM_CLASS = "〇零一二两三四五六七八九十百千"
 _CN_CHAPTER = re.compile(rf"^\s*第\s*([0-9{_CN_NUM_CLASS}]+)\s*[章回卷节篇讲]")
 _MD_CN_HEADING = re.compile(rf"^#{{1,6}}\s+第?\s*([{_CN_NUM_CLASS}]+)\s*[·、.:：章回卷节篇讲]")
 
+# Table-of-contents header lines across common languages. Anchored to a whole
+# line (^\s*X\s*$) so an inline "the contents of this chapter" never matches.
+_TOC_HEADERS = (
+    "table of contents", "contents", "índice", "sumário",   # EN / ES / PT
+    "目录", "目錄", "目次",                                   # Chinese / Japanese
+    "table des matières",                                   # French
+    "inhaltsverzeichnis",                                   # German
+    "indice", "sommario",                                   # Italian (no accent — distinct from índice above)
+    "inhoudsopgave",                                        # Dutch
+)
+_TOC_PATTERN = re.compile(
+    r"^\s*(?:" + "|".join(re.escape(h) for h in _TOC_HEADERS) + r")\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# ATX-style heading: "# Title", "## Section", AsciiDoc "= Title", "== Section".
+# The required space after the marker distinguishes an AsciiDoc "== X" from a
+# reStructuredText underline "=====" (no space) — the latter is intentionally
+# ignored (RST underline headings are out of scope).
+_ATX_HEADING = re.compile(r"^(#{1,6}|={1,6})\s+(.+?)\s*#*$")
+
+
+def _structural_chapter_count(text: str) -> int:
+    """Count chapter-like ATX headings in Markdown/AsciiDoc sources.
+
+    Groups distinct (case-normalized) heading titles by depth and returns the
+    count at the shallowest depth with >= 2 distinct headings — this selects the
+    real chapter level in the common "# Book Title / ## Chapter" layout where the
+    top level appears once. Headings inside fenced code blocks are skipped so a
+    "# comment" in a code sample is not mistaken for a chapter. Headings whose
+    title starts with an ASCII digit (e.g. "## 5 Setup") are excluded — they
+    are numeric-list-style, not chapters.
+    """
+    levels: dict[int, set[str]] = {}
+    in_fence = False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("```") or s.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = _ATX_HEADING.match(s)
+        if not m:
+            continue
+        title = m.group(2).strip().lower()
+        if not title:
+            continue
+        # Skip headings whose title starts with a bare ASCII digit ("## 5 Setup").
+        # These are numeric list-item style headings, not chapter headings; they
+        # were intentionally excluded from numeric detection and must stay excluded.
+        if title[0].isdigit():
+            continue
+        levels.setdefault(len(m.group(1)), set()).add(title)
+    if not levels:
+        return 0
+    for depth in sorted(levels):
+        if len(levels[depth]) >= 2:
+            return len(levels[depth])
+    # No level has >= 2 distinct headings: a thin doc (e.g. one heading per
+    # level). Count them all — this path runs only as a fallback when numeric
+    # chapter detection already found zero, so it cannot inflate real books.
+    return sum(len(titles) for titles in levels.values())
+
 
 def _cn_numeral_to_int(s: str) -> int | None:
     """Parse a Chinese (or ASCII-digit) chapter numeral into an int (1..999)."""
@@ -171,14 +235,15 @@ def detect_structure(text: str) -> dict:
         if num is not None:
             numbers.add(num)
             headings.append(line.strip())
-    chapters_detected = len(numbers)
-
-    # Look for ToC indicators in the first ~30k chars
-    toc_pattern = re.compile(
-        r"^\s*(?:table of contents|contents|índice|sumário)\s*$",
-        re.IGNORECASE | re.MULTILINE,
+    numeric_count = len(numbers)
+    # Fall back to structural (Markdown/AsciiDoc) headings only when no numeric
+    # "Chapter N" headings were found, so books with real chapters are unaffected.
+    chapters_detected = (
+        numeric_count if numeric_count > 0 else _structural_chapter_count(text)
     )
-    has_toc = bool(toc_pattern.search(text[:30000]))
+
+    # Look for ToC indicators in the first ~30k chars (multilingual; see _TOC_PATTERN)
+    has_toc = bool(_TOC_PATTERN.search(text[:30000]))
 
     return {
         "chapters_detected": chapters_detected,
